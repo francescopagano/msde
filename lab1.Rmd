@@ -133,6 +133,7 @@ mod_filter = Arima(benzina_d, model = modx) #filtra con lo stesso modello la ser
 mod_filter
 
 beta = mod_filter$residuals
+
 ```
 Adesso vediamo la CCF tra alpha e beta, per cercare di capire qual è la funzione di trasferimento, se la teoria funziona la ccf è proporzionale alla funzione di input (non ricordo il nome).
 
@@ -148,31 +149,66 @@ ccf(beta, alpha) #alpha(t) "x" e beta(t+k) "y"
 
 
 tfmod1 = tfm1(benzina_d, Cop_d, orderN = c(0, 0, 0), orderX = c(0, 2, 1)) #r, s, b
+
 ```
 Potrebbe non essere il modello più adeguato, potremmo quindi avere r=1
 ho alcune cross corr significative vicine allo 0, non va bene
 
 Forse aggiungendo la comp per i residui magari si sistema tutto
+
 ```{r}
 ccf(alpha, tfmod1$residuals, main = "alfa & TFM", ylab = "CCF")
+
 ```
 Entrambe molto velocemnte a 0, o AR corto o MA corto
 Sembra AR(2), aggiungiamo all comp di errore questa specifica
 
 Non ancora il massimo ma potrei usare ancora un modello (1,1,1), buh
+
 ```{r}
 par(mfrow=c(2,1))
 acf(tfmod1$residuals)
 pacf(tfmod1$residuals)
 
-tfmod1 = tfm1(benzina_d, Cop_d, orderN = c(2, 0, 0), orderX = c(0, 2, 1)) #p,d,q per "errore" & r, s, b per "x"
-acf(tfmod1$residuals)
-pacf(tfmod1$residuals)
+tfmod1_1 = tfm1(benzina_d, Cop_d, orderN = c(2, 0, 0), orderX = c(0, 2, 1)) #p,d,q per "errore" & r, s, b per "x"
+acf(tfmod1_1$residuals)
+pacf(tfmod1_1$residuals)
 par(mfrow=c(1,1))
 
+ccf(alpha, tfmod1_1$residuals, main = "alpha e TFM1 + ARIMA(2,0,0)", ylab = "Residuals")
+
 ```
+In posizione [,1] c'è la costante del modello non omega_0, in posizione [,2] c'è omega_0
+In posizione [,4] c'è delta 1
 
+Vediamo se la funzione di CCF della serie sbiancata si comporta bene, rispetto al modello precedente
 
+```{r}
+tfmod2 = tfm1(benzina_d, Cop_d, orderN = c(0, 0, 0), orderX = c(1, 1, 1)) #r, s, b
+
+ccf(alpha, tfmod2$residuals) #non va bene ancora, provo a sistemare i residui allora
+
+par(mfrow=c(2,1))
+acf(tfmod2$residuals, main = "TFM1: r = 1, s = 1, b = 1")
+pacf(tfmod2$residuals, main = "TFM1: r = 1, s = 1, b = 1")
+par(mfrow=c(1,1)) 
+
+```
+Osservando acf e pacf possiamo pensare di adattare un modelle AR(2) alla componente di errore.
+Andiamo a vedere se la modellazione dell'errore ci ha sistemato ccf di alpha e dei residui del modello.
+
+Abbiamo identificato un modello del tipo: (osservando il summary)
+y_t = (0.993 + 2.4688 + 1.324B^2)x_t-1 + (1 + 0.3551B - 0.1953B^2)eta_t
+
+LE PREVISIONI NEI MODELLI A FUNZIONI DI TRASFERIMENTO POSSONO ESSERE RICHIESTE ALL'ESAME PER LA PARTE TEORICA :)
+NON IN R
+
+```{r}
+tfmod2_1 = tfm1(benzina_d, Cop_d, orderN = c(2, 0, 0), orderX = c(1, 1, 1)) #r, s, b
+ccf(alpha, tfmod2_1$residuals)
+ccf(alpha, tfmod1_1$residuals) #confronto con il primo modello in cui ho inserito AR(2) per la comp di errore
+
+```
 
 
 
