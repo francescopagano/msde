@@ -1,0 +1,362 @@
+---
+title: "Laboratorio 2 - Modelli VAR"
+output: html_notebook
+---
+
+## **LABORATORIO 2 - MODELLI VAR**
+
+![](images/clipboard-2633041296.jpeg)
+
+```{r warning=FALSE}
+library(forecast)
+library(vars)
+```
+
+```{r}
+setwd("C:/Users/fra24/OneDrive/Documenti/uni/magistrale/economici/lab2")
+uschange = read.csv("fpp3_uschange.csv")
+str(uschange)
+```
+
+```{r}
+uschange = ts(uschange[, -1], start = c(1970, 1), frequency = 4)
+end(uschange)
+```
+
+Andremo a fare dei modelli con serie univariate e con dei modelli VAR ed andremo tramite delle previsioni a confrontare i modelli in termini di prestazioni. Vedremo se l'utilizzo dei VAR porta a previsioni migliori.
+
+Dividiamo in stima e verifica.
+
+Si può usare MSE di previsione per confrontare i modelli. Le previsioni sono condizionate al periodo di riferimento, ci possono essere periodi buoni o cattivi.
+
+Avendo una serie lunga (500), usiamo le prime 400 osservazioni per costruire il modello, poi possiamo usare le altre osservazioni per le previsioni in questo modo: usiamo le prime 10 osservazioni su cui facciamo previsioni e MSE, poi utilizziamo 401 osservazioni e prevediamo le osservazioni 402-411, ripetiamo questa cosa fino ad arrivare alle 491-500 esime righe.
+
+Avro tante previsioni di tanti passi in avanti, posso calcolare MSE di previsioni dei passi in avanti (fino a 10) per ottenere la performance previsiva. Mi aspetto che l'errore di prev aumenti il all'aumentare del passo. Nella decima previsione, non cotterà solo l'incertezza dei passi, ma anche le previsioni (e quindi le loro incertezze) ottenute ai passi precedenti.
+
+```{r}
+train = window(uschange[, c(1,3,5)], end = c(2017, 4))
+test = window(uschange[, c(1,3,5)], start = c(2018, 1))
+plot(ts(train))
+```
+
+```{r, fig.height = 12, fig.width=15}
+par(mfrow = c(3,2))
+for (i in 1:NCOL(train)) {
+  acf(train[,i], main = colnames(train[i]))
+  pacf(train[,i], main = colnames(train[i]))
+}
+par(mfrow = c(1,1))
+
+```
+
+1.  per la prima può sembrare un AR(3), non sembra esserci stagionalità
+
+2.  non considero la comp stagionale anche se presente
+
+3.  uno, due ritardi significativi AR(2), c'è un pò di stagionalità residua
+
+```{r}
+par(mfrow = c(1,1))
+ccf(train[,1], train[,2], main ="Consumption and Production")
+ccf(train[,1], train[,3], main ="Consumption and Disoccupation")
+ccf(train[,2], train[,3], main ="Production and Disoccupation")
+par(mfrow = c(1,1))
+
+```
+
+1.  Tanti coeff positivi significativi a sx e meno a dx, che indica come un aumento dei consumi porta ad un aumento della produzione principalmente.
+
+2.  La correlazione è negativa, se aumentano i consumi il tasso di disoccupazione diminuisce, tutti coeff sono a sx ad indicare che sono i consumi che hanno un effetto sul tasso di disoccupazione.
+
+3.  Sia a sx che a dx ci sono dei coeff significativi, c'è una relazione bi direzionale tra le due serie. Disoccupazione e Produzione si influenzano a vicenda.
+
+Iniziamo la modellazione con i VAR
+
+Per identificare i gradi del var possiamo usare i criteri di informazione
+
+```{r}
+ICsel = VARselect(train, type = "const", lag.max = 5)
+ICsel$selection
+ICsel$criteria
+```
+
+```{r}
+ICsel = VARselect(train, type = "none", lag.max = 5)
+ICsel$selection
+ICsel$criteria
+```
+
+I primi tre criteri danno risultati diversi, andiamo a stimare allora i VAR consigliati dai tre criteri separatamente.
+
+#### VAR(1)
+
+Non vediamo l'effetto simultaneo perchè gli errori sono correlati tra loro.
+
+Abbiamo una serie trivaria, e per ogni serie la vedremo in relazioni ai ritardi precedenti delle altre serie e se stessa.
+
+```{r}
+mod1 = VAR(train, p=1)
+summary(mod1)
+```
+
+Si possono vedere dei coefficienti non significativi per le varie serie nei 3 modelli differenti. Rispecchiamo quello visto dalle ccf.
+
+Inoltre c'è la matrice di covarianza e correlazione dei residui.
+
+#### VAR(2)
+
+```{r}
+mod2 = VAR(train, p = 2)
+summary(mod2)
+```
+
+Nella prima serie risultano significativi i consumi a t-1 e t-2, mentre a t-2 e t-1 di prod e disoccupazione nono sono significativi
+
+Nell'equazione della produzione a t-1 sono significativi produzione e consumi e disoccupazione a t-2 ninete è significativo.
+
+Nella terza serie, disoccupazione a t-1 e t-2 e consumo a t-1
+
+```{r}
+mod3 = VAR(train, p = 3)
+summary(mod3)
+```
+
+Lasciamo perdere :)
+
+Prima però di scegliere facciamo l'analisi dei residui per effetivamente scegliere il modello più adeguato.
+
+```{r}
+res1 = residuals(mod1)
+res2 = residuals(mod2)
+res3 = residuals(mod3)
+```
+
+bisogna controllare se le tre serie di residui di ogni modello sono dei WN, altrimenti il modello non va bene.
+
+```{r}
+head(res1, 10) #sempre trivariati, ho i residui per ogni serie
+```
+
+```{r, fig.height=10}
+par(mfrow = c(2,1))
+acf(res1[,1], 20)
+pacf(res1[,1], 20)
+```
+
+Non vanno molto bene, abbiamo ritardi significativi
+
+```{r, fig.height=10}
+par(mfrow = c(2,1))
+acf(res1[,2], 20)
+pacf(res1[,2], 20)
+```
+
+```{r, fig.height = 10}
+par(mfrow = c(2,1))
+acf(res1[,3], 20)
+pacf(res1[,3], 20)
+```
+
+```{r}
+par(mfrow = c(1,1))
+ccf(res1[,1], res1[,2], main ="Consumption and Production")
+ccf(res1[,1], res1[,3], main ="Consumption and Disoccupation")
+ccf(res1[,2], res1[,3], main ="Production and Disoccupation")
+par(mfrow = c(1,1))
+
+cor(res1)
+```
+
+Il modello va benino, non riesce a tenere troppo conto della autocorrelazione nelle serie, ma per il resto è ok.
+
+```{r, fig.height=10}
+par(mfrow = c(2,1))
+acf(res2[,1], 20)
+pacf(res2[,1], 20)
+```
+
+```{r, fig.height=10}
+par(mfrow = c(2,1))
+acf(res2[,2], 20)
+pacf(res2[,2], 20)
+```
+
+```{r, fig.height=10}
+par(mfrow = c(2,1))
+acf(res1[,3], 20)
+pacf(res1[,3], 20)
+```
+
+```{r}
+par(mfrow = c(1,1))
+ccf(res2[,1], res2[,2], main ="Consumption and Production")
+ccf(res2[,1], res2[,3], main ="Consumption and Disoccupation")
+ccf(res2[,2], res2[,3], main ="Production and Disoccupation")
+par(mfrow = c(1,1))
+
+cor(res2)
+```
+
+Potremmo accontentarci di un VAR(2).
+
+Dovremmo controllare per modelli anche in termini di previsioni.
+
+```{r, fig.height=10}
+par(mfrow = c(2,1))
+acf(res3[,1], 20)
+pacf(res3[,1], 20)
+```
+
+```{r, fig.height=10}
+par(mfrow = c(2,1))
+acf(res3[,2], 20)
+pacf(res3[,2], 20)
+```
+
+```{r, fig.height=10}
+par(mfrow = c(2,1))
+acf(res3[,3], 20)
+pacf(res3[,3], 20)
+```
+
+```{r}
+par(mfrow = c(1,1))
+ccf(res3[,1], res3[,2], main ="Consumption and Production")
+ccf(res3[,1], res3[,3], main ="Consumption and Disoccupation")
+ccf(res3[,2], res3[,3], main ="Production and Disoccupation")
+par(mfrow = c(1,1))
+
+cor(res2)
+```
+
+```{r}
+plot(ts(res2))
+```
+
+```{r}
+Box.test(res2[,2], lag = 10, type = "Lj")
+```
+
+Voglio capire se il mio modello è stazionario, ovvero devo prendere tutti i coeff e andare a avedere se le radici dell'equazione sono tutte in modulo \< 1. Il comando darebbe errori se ci fossero problemi di non staionarietà.
+
+Gli errori non per forza si distribuiscono come delle normali multivariate. Ha senso comunque effettuare un test per la normalità dei residui.
+
+```{r}
+roots(mod2) #controllo stazionarietà.
+
+normality.test(mod2) #controllo normalità dei residui.
+```
+
+Non posso accettare l'ipotesi nulla, p-value troppo alto.
+
+Per la curtosi si ha che Ho: curtosi = 3.
+
+Vengono inoltre fatti un test sulla simmetria e la curtosi, rifiuto Ho in tutti e tre i test.
+
+Abbiamo una serie di test (con potenza bassa), rifiutiamo molto più spesso l'ipotesi alternativa del previsto.
+
+Rifiuto ipotesi nulla incorrelazioni dei residui.
+
+```{r}
+serial.test(mod2, type = "PT.asymptotic")
+serial.test(mod2, lags.bg = 10, type = "BG")
+```
+
+#### PREVISIONI
+
+Andiamo a vedere se questo modello prevede meglio di modelli univariati.
+
+uso autoarima, che identifica il miglior modello tramite criteri di informazione automatica, non tramite funzioni coome acf e pacf. Bisogna tener conto degli operatori di differenziazione.
+
+E' difficile e ha poco senso confrontare modelli con d/D differenti perché sono modelli che misurano variabili e osservazioni differenti. uno misura yt e uno misura yt differenziato. Rischiamo di confrontare cose differenti. Dobbiamo fissare d/D a priori e correttamente.
+
+Usiamo bic rispetto ad altri criteri perchè più parsimonioso.
+
+```{r}
+uni_cons = auto.arima(train[,1], ic = "bic", d = 0, D = 0)
+fore_cons = forecast(uni_cons, h=nrow(test))
+
+uni_cons
+```
+
+```{r}
+uni_prod = auto.arima(train[,2], ic = "bic", d = 0, D = 0)
+fore_prod = forecast(uni_prod, h=nrow(test))
+
+uni_prod
+```
+
+```{r}
+uni_une = auto.arima(train[,3], ic = "bic", d = 0, D = 0)
+fore_une = forecast(uni_une, h=nrow(test))
+
+uni_une
+```
+
+Devo sempre giustificare i valori dei parametri che scelgo, ovvero la scelta del criterio, d, D, P max, D max. Va sempre specificato e giustificato tutto.
+
+Oppure posso fare un'identificazione strutturale. Auto arima può essere usato come spunto.
+
+```{r}
+mean_funi = cbind(fore_cons$mean,
+                  fore_prod$mean,
+                  fore_une$mean)
+
+fore_cons
+fore_prod
+fore_une
+
+mean_funi
+colnames(mean_funi) = colnames(train)
+```
+
+Prendiamo solo le previsioni puntuali e le inseriamo nella matrice.
+
+Andiamo a prendere le previsioni multivariate dai modelli VAR
+
+```{r}
+fmod1 = predict(mod1, n.ahead = 6)
+fmod2 = predict(mod2, n.ahead = 6)
+fmod3 = predict(mod3, n.ahead = 6)
+```
+
+Prendo solo la prima colonna. ovvero la colonna con le prev
+
+```{r}
+mean_f1 = sapply(fmod1$fcst, function(x) x[,1])
+mean_f2 = sapply(fmod2$fcst, function(x) x[,1])
+mean_f3 = sapply(fmod3$fcst, function(x) x[,1])
+```
+
+Ci costruiamo gli errori di previsione.
+
+```{r}
+table.mse = rbind(L1 = colMeans((mean_f1-test)^2),
+                  L2 = colMeans((mean_f2-test)^2),
+                  L3 = colMeans((mean_f3-test)^2),
+                  ARIMA = colMeans((mean_funi-test)^2))
+round(table.mse,4)
+apply(table.mse, 2, rank)
+
+```
+
+Per il consumo il modello migliore in termini previsione è L2, per la produzione L1 e per la disoccupazione L2.
+
+Provo non con MSE ma con il MSA
+
+```{r}
+table.msa = rbind(L1 = colMeans(abs((mean_f1-test)^2)),
+                  L2 = colMeans(abs((mean_f2-test)^2)),
+                  L3 = colMeans(abs((mean_f3-test)^2)),
+                  ARIMA = colMeans(abs((mean_funi-test)^2)))
+round(table.msa,4)
+apply(table.msa, 2, rank)
+```
+
+Più aumenta l'intervallo previsivo più aumenta la varianza delle mie previsioni, dato l'aumento di incertezza delle informazioni. Dato che utilizzo previsioni per previsioni.
+
+```{r, fig.height=12.5, fig.width=17.5}
+plot(fmod2, xlim = c(186, 198))
+```
+
+:)
